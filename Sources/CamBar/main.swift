@@ -1,5 +1,6 @@
 import Cocoa
 import Security
+import ServiceManagement
 import WebKit
 
 private let defaultStreamName = "c200h264"
@@ -29,17 +30,19 @@ final class SetupWindowController: NSObject {
     var onInstall: (() -> Void)?
     var onOpenGuide: (() -> Void)?
     var onSave: ((String, String, String) -> Void)?
+    var onLaunchAtLoginChanged: ((Bool) -> Void)?
 
     private let window: NSWindow
     private let statusLabel = NSTextField(labelWithString: "")
     private let streamField = NSTextField(string: defaultStreamName)
     private let sourceField = NSTextField(string: "")
     private let tokenField = NSSecureTextField(string: "")
+    private let launchAtLoginButton = NSButton(checkboxWithTitle: "Open CamBar at login", target: nil, action: nil)
     private let installButton = NSButton(title: "Install & Start go2rtc", target: nil, action: nil)
     private let guideButton = NSButton(title: "Open Camera Setup", target: nil, action: nil)
     private let saveButton = NSButton(title: "Save & Open CamBar", target: nil, action: nil)
 
-    init(initialStreamName: String, initialSource: String) {
+    init(initialStreamName: String, initialSource: String, initialLaunchAtLogin: Bool) {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
                           styleMask: [.titled, .closable],
                           backing: .buffered,
@@ -50,6 +53,7 @@ final class SetupWindowController: NSObject {
         window.contentView = makeContentView()
         streamField.stringValue = initialStreamName
         sourceField.stringValue = initialSource
+        launchAtLoginButton.state = initialLaunchAtLogin ? .on : .off
     }
 
     func show() {
@@ -67,6 +71,7 @@ final class SetupWindowController: NSObject {
         installButton.isEnabled = !installing
         guideButton.isEnabled = !installing
         saveButton.isEnabled = !installing
+        launchAtLoginButton.isEnabled = !installing
         setStatus(installing ? "Installing and starting the background service…" : "")
     }
 
@@ -126,6 +131,10 @@ final class SetupWindowController: NSObject {
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.frame = NSRect(x: 32, y: 70, width: 496, height: 38)
 
+        launchAtLoginButton.target = self
+        launchAtLoginButton.action = #selector(toggleLaunchAtLogin)
+        launchAtLoginButton.frame = NSRect(x: 32, y: 22, width: 220, height: 28)
+
         saveButton.bezelStyle = .rounded
         saveButton.keyEquivalent = "\r"
         saveButton.target = self
@@ -135,12 +144,16 @@ final class SetupWindowController: NSObject {
 
         [title, intro, stepOne, installButton, stepTwo, guideButton,
          sourceLabel, sourceField, tokenLabel, tokenField, stepThree,
-         streamField, statusLabel, saveButton].forEach { content.addSubview($0) }
+         streamField, statusLabel, launchAtLoginButton, saveButton].forEach { content.addSubview($0) }
         return content
     }
 
     @objc private func install() { onInstall?() }
     @objc private func openGuide() { onOpenGuide?() }
+
+    @objc private func toggleLaunchAtLogin() {
+        onLaunchAtLoginChanged?(launchAtLoginButton.state == .on)
+    }
 
     @objc private func save() {
         let name = streamField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -168,6 +181,7 @@ final class SetupWindowController: NSObject {
         saveButton.isEnabled = false
         guideButton.isEnabled = false
         streamField.isEnabled = false
+        launchAtLoginButton.isEnabled = false
         setStatus("Saved \(streamName). Opening CamBar…")
     }
 
@@ -208,6 +222,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     private var bundledFFmpegPath: String? {
         Bundle.main.url(forResource: "ffmpeg", withExtension: nil)?.path
+    }
+
+    private var launchAtLoginEnabled: Bool {
+        if #available(macOS 13.0, *) {
+            return SMAppService.mainApp.status == .enabled
+        }
+        return false
     }
 
     private var configuredSource: String {
@@ -278,6 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        registerLaunchAtLogin()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
@@ -292,6 +314,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             if self.streamName == nil || self.streamName?.isEmpty == true {
                 self.showSetupWindow()
             }
+        }
+    }
+
+    private func registerLaunchAtLogin() {
+        guard #available(macOS 13.0, *) else { return }
+        guard !UserDefaults.standard.bool(forKey: "launchAtLoginPreferenceSet") else { return }
+        guard SMAppService.mainApp.status != .enabled else { return }
+        do {
+            try SMAppService.mainApp.register()
+            UserDefaults.standard.set(true, forKey: "launchAtLoginPreferenceSet")
+        } catch {
+            NSLog("CamBar could not register as a login item: %@", error.localizedDescription)
+        }
+    }
+
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        guard #available(macOS 13.0, *) else { return }
+        do {
+            if enabled {
+                if SMAppService.mainApp.status != .enabled {
+                    try SMAppService.mainApp.register()
+                }
+            } else if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            }
+            UserDefaults.standard.set(true, forKey: "launchAtLoginPreferenceSet")
+        } catch {
+            NSLog("CamBar could not update its login item: %@", error.localizedDescription)
         }
     }
 
@@ -372,13 +422,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     @objc private func showSetupWindow() {
         if setupWindow == nil {
             let controller = SetupWindowController(initialStreamName: streamName ?? defaultStreamName,
-                                                    initialSource: configuredSource)
+                                                    initialSource: configuredSource,
+                                                    initialLaunchAtLogin: launchAtLoginEnabled)
             controller.onInstall = { [weak self, weak controller] in
                 self?.installAndStart(controller: controller)
             }
             controller.onOpenGuide = { [weak self] in self?.openCameraSetup() }
             controller.onSave = { [weak self] name, source, token in
                 self?.saveStream(name, source: source, token: token, controller: controller)
+            }
+            controller.onLaunchAtLoginChanged = { [weak self] enabled in
+                self?.setLaunchAtLogin(enabled)
             }
             setupWindow = controller
         }
