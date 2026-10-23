@@ -6,6 +6,7 @@
 
 <p>
   <a href="https://github.com/DavidNgugi/cambar/actions/workflows/build.yml"><img alt="Build" src="https://github.com/DavidNgugi/cambar/actions/workflows/build.yml/badge.svg"></a>
+  <a href="https://github.com/DavidNgugi/cambar/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DavidNgugi/cambar?display_name=tag&sort=semver"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Platform: macOS 13+" src="https://img.shields.io/badge/platform-macOS%2013%2B-black">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/swift-5.9-orange">
@@ -38,6 +39,21 @@ never expose RTSP/ONVIF locally — by bridging them through
 
 No browser tabs, no Dock icon, no Mi Home app. Click the camera icon, watch the
 feed, click again to hide it.
+
+## First launch
+
+CamBar opens a small setup window when no stream has been configured yet:
+
+1. Click **Install & Start go2rtc**. CamBar downloads go2rtc, creates its config
+   directory, and installs a launchd service that keeps it running in the background.
+2. Click **Open Camera Setup**, then use go2rtc’s local web UI to add your camera
+   (for Xiaomi cameras, choose **Add → Xiaomi**).
+3. Add an H.264/AAC stream such as `c200h264`, enter that stream name in CamBar,
+   and click **Save & Open CamBar**.
+
+The setup window is available again from the **Setup** button in CamBar’s popover.
+The service runs at login and keeps the local stream available even when the
+popover is closed.
 
 ## How it works
 

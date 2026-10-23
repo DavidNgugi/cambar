@@ -9,6 +9,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp .build/release/CamBar "$APP/Contents/MacOS/CamBar"
 mkdir -p "$APP/Contents/Resources"
+cp scripts/install-go2rtc.sh scripts/install-launchd.sh go2rtc.example.yaml "$APP/Contents/Resources/"
+chmod +x "$APP/Contents/Resources/install-go2rtc.sh" "$APP/Contents/Resources/install-launchd.sh"
 
 # Build the app icon from the source artwork for Finder, Launchpad, and the Dock.
 ICONSET="$APP/Contents/Resources/CamBar.iconset"
