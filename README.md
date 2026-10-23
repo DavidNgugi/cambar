@@ -20,7 +20,7 @@
   <a href="CONTRIBUTING.md"><b>Contributing</b></a>
 </p>
 
-<img src="docs/menubar.svg" alt="CamBar" width="760">
+<img src="docs/menubar.png" alt="CamBar" width="760">
 
 </div>
 
