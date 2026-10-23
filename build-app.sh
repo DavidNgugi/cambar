@@ -36,5 +36,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>13.0</string>
 </dict></plist>
 PLIST
-codesign --force --deep --sign - "$APP" >/dev/null 2>&1 && echo "Ad-hoc signed $APP" || true
+if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
+  codesign --force --deep --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$APP"
+  codesign --verify --deep --strict "$APP"
+  echo "Signed $APP with ${CODESIGN_IDENTITY}"
+else
+  codesign --force --deep --sign - "$APP" >/dev/null 2>&1 && echo "Ad-hoc signed $APP" || true
+fi
 echo "Built $APP (version ${VERSION}) — run: open $APP"

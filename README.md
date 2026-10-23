@@ -73,8 +73,9 @@ Grab the latest **`CamBar-<version>.dmg`** from
 to **Applications**, then add it to **System Settings → General → Login Items**.
 You still need go2rtc running — see below.
 
-> **First launch (Gatekeeper).** CamBar is **ad-hoc signed**, not notarized. If
-> macOS blocks it, right-click **CamBar → Open**, or run:
+> **First launch (Gatekeeper).** Release DMGs are signed with Apple Developer ID
+> and notarized. Local builds remain ad-hoc signed; if macOS blocks one, right-click
+> **CamBar → Open**, or run:
 > ~~~bash
 > xattr -dr com.apple.quarantine /Applications/CamBar.app
 > ~~~
@@ -174,7 +175,7 @@ CAM_BAR_URL="http://127.0.0.1:1984/api/stream.m3u8?src=garage" open CamBar.app
 - **Tokens:** `go2rtc.yaml` holds your account token. It is gitignored. Keep it that way.
 - **Privacy:** CamBar talks only to your local go2rtc. Nothing is uploaded.
 - **LAN:** the stream is only as private as your network. Put IoT devices on a separate VLAN if you care.
-- **Gatekeeper:** ad-hoc signed, not notarized (see Installation).
+- **Gatekeeper:** release DMGs are Developer ID signed and notarized; local builds are ad-hoc signed.
 
 ## Troubleshooting
 
