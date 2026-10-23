@@ -48,8 +48,10 @@ CamBar opens a small setup window when no stream has been configured yet:
    directory, and installs a launchd service that keeps it running in the background.
 2. Click **Open Camera Setup**, then use go2rtc’s local web UI to add your camera
    (for Xiaomi cameras, choose **Add → Xiaomi**).
-3. Add an H.264/AAC stream such as `c200h264`, enter that stream name in CamBar,
-   and click **Save & Open CamBar**.
+3. Copy the generated source URL (RTSP, ONVIF, Xiaomi, FFmpeg, USB, or another
+   go2rtc source) into CamBar. Add a Xiaomi token only when using `xiaomi://`,
+   choose the stream name, and click **Save & Open CamBar**. CamBar writes and
+   validates the configuration before reporting success.
 
 The setup window is available again from the **Setup** button in CamBar’s popover.
 The service runs at login and keeps the local stream available even when the

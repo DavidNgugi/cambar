@@ -1,24 +1,46 @@
 import Cocoa
 import AVKit
+import Security
 
 private let defaultStreamName = "c200h264"
 private let defaultGo2RTCPath = "~/.local/bin/go2rtc"
 private let defaultConfigPath = "~/.config/go2rtc/go2rtc.yaml"
 
+private enum CredentialStore {
+    private static let service = "local.cambar.xiaomi"
+
+    static func save(token: String, accountID: String) {
+        let data = Data(token.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: accountID
+        ]
+        let attributes: [String: Any] = [kSecValueData as String: data]
+        if SecItemUpdate(query as CFDictionary, attributes as CFDictionary) != errSecSuccess {
+            var item = query
+            item[kSecValueData as String] = data
+            SecItemAdd(item as CFDictionary, nil)
+        }
+    }
+}
+
 final class SetupWindowController: NSObject {
     var onInstall: (() -> Void)?
     var onOpenGuide: (() -> Void)?
-    var onSave: ((String) -> Void)?
+    var onSave: ((String, String, String) -> Void)?
 
     private let window: NSWindow
     private let statusLabel = NSTextField(labelWithString: "")
     private let streamField = NSTextField(string: defaultStreamName)
+    private let sourceField = NSTextField(string: "")
+    private let tokenField = NSSecureTextField(string: "")
     private let installButton = NSButton(title: "Install & Start go2rtc", target: nil, action: nil)
     private let guideButton = NSButton(title: "Open Camera Setup", target: nil, action: nil)
     private let saveButton = NSButton(title: "Save & Open CamBar", target: nil, action: nil)
 
-    init(initialStreamName: String) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 360),
+    init(initialStreamName: String, initialSource: String) {
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
                           styleMask: [.titled, .closable],
                           backing: .buffered,
                           defer: false)
@@ -27,6 +49,7 @@ final class SetupWindowController: NSObject {
         window.isReleasedWhenClosed = false
         window.contentView = makeContentView()
         streamField.stringValue = initialStreamName
+        sourceField.stringValue = initialSource
     }
 
     func show() {
@@ -48,45 +71,60 @@ final class SetupWindowController: NSObject {
     }
 
     private func makeContentView() -> NSView {
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 560, height: 360))
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 560, height: 520))
 
         let title = NSTextField(labelWithString: "Your camera, one click away")
         title.font = .systemFont(ofSize: 24, weight: .semibold)
-        title.frame = NSRect(x: 32, y: 300, width: 496, height: 32)
+        title.frame = NSRect(x: 32, y: 460, width: 496, height: 32)
 
-        let intro = NSTextField(wrappingLabelWithString: "CamBar uses go2rtc to connect to cloud-only cameras. Install the background service, configure your camera once, then CamBar will keep the stream ready in your menu bar.")
+        let intro = NSTextField(wrappingLabelWithString: "Install the background service, configure your camera once, then CamBar will keep the stream ready in your menu bar.")
         intro.font = .systemFont(ofSize: 14)
         intro.textColor = .secondaryLabelColor
-        intro.frame = NSRect(x: 32, y: 236, width: 496, height: 52)
+        intro.frame = NSRect(x: 32, y: 396, width: 496, height: 52)
 
         let stepOne = NSTextField(labelWithString: "1  Start the background service")
         stepOne.font = .systemFont(ofSize: 14, weight: .medium)
-        stepOne.frame = NSRect(x: 32, y: 198, width: 240, height: 24)
+        stepOne.frame = NSRect(x: 32, y: 358, width: 240, height: 24)
 
         installButton.bezelStyle = .rounded
         installButton.target = self
         installButton.action = #selector(install)
-        installButton.frame = NSRect(x: 332, y: 194, width: 196, height: 30)
+        installButton.frame = NSRect(x: 332, y: 354, width: 196, height: 30)
 
         let stepTwo = NSTextField(labelWithString: "2  Add your camera in go2rtc")
         stepTwo.font = .systemFont(ofSize: 14, weight: .medium)
-        stepTwo.frame = NSRect(x: 32, y: 154, width: 260, height: 24)
+        stepTwo.frame = NSRect(x: 32, y: 318, width: 260, height: 24)
 
         guideButton.bezelStyle = .rounded
         guideButton.target = self
         guideButton.action = #selector(openGuide)
-        guideButton.frame = NSRect(x: 332, y: 150, width: 196, height: 30)
+        guideButton.frame = NSRect(x: 332, y: 314, width: 196, height: 30)
         guideButton.isEnabled = false
 
-        let stepThree = NSTextField(labelWithString: "3  Choose the stream CamBar should show")
-        stepThree.font = .systemFont(ofSize: 14, weight: .medium)
-        stepThree.frame = NSRect(x: 32, y: 108, width: 310, height: 24)
+        let sourceLabel = NSTextField(labelWithString: "Camera source URL")
+        sourceLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        sourceLabel.frame = NSRect(x: 32, y: 270, width: 496, height: 24)
 
-        streamField.placeholderString = "Stream name, for example c200h264"
-        streamField.frame = NSRect(x: 332, y: 104, width: 196, height: 28)
+        sourceField.placeholderString = "rtsp://, onvif://, xiaomi://, ffmpeg:, or another go2rtc source"
+        sourceField.frame = NSRect(x: 32, y: 238, width: 496, height: 28)
+
+        let tokenLabel = NSTextField(labelWithString: "Xiaomi token")
+        tokenLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        tokenLabel.stringValue = "Xiaomi token (optional)"
+        tokenLabel.frame = NSRect(x: 32, y: 204, width: 496, height: 24)
+
+        tokenField.placeholderString = "V1:… (leave blank to keep the saved token)"
+        tokenField.frame = NSRect(x: 32, y: 172, width: 496, height: 28)
+
+        let stepThree = NSTextField(labelWithString: "3  Stream name CamBar should show")
+        stepThree.font = .systemFont(ofSize: 14, weight: .medium)
+        stepThree.frame = NSRect(x: 32, y: 138, width: 280, height: 24)
+
+        streamField.placeholderString = "For example c200h264"
+        streamField.frame = NSRect(x: 332, y: 134, width: 196, height: 28)
 
         statusLabel.font = .systemFont(ofSize: 12)
-        statusLabel.frame = NSRect(x: 32, y: 66, width: 496, height: 24)
+        statusLabel.frame = NSRect(x: 32, y: 70, width: 496, height: 38)
 
         saveButton.bezelStyle = .rounded
         saveButton.keyEquivalent = "\r"
@@ -96,7 +134,8 @@ final class SetupWindowController: NSObject {
         saveButton.isEnabled = false
 
         [title, intro, stepOne, installButton, stepTwo, guideButton,
-         stepThree, streamField, statusLabel, saveButton].forEach { content.addSubview($0) }
+         sourceLabel, sourceField, tokenLabel, tokenField, stepThree,
+         streamField, statusLabel, saveButton].forEach { content.addSubview($0) }
         return content
     }
 
@@ -105,11 +144,17 @@ final class SetupWindowController: NSObject {
 
     @objc private func save() {
         let name = streamField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let source = sourceField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = tokenField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
             setStatus("Enter the stream name shown in go2rtc.", isError: true)
             return
         }
-        onSave?(name)
+        guard !source.isEmpty else {
+            setStatus("Paste the camera source URL from go2rtc.", isError: true)
+            return
+        }
+        onSave?(name, source, token)
     }
 
     func markReady() {
@@ -163,6 +208,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var bundledFFmpegPath: String? {
         Bundle.main.url(forResource: "ffmpeg", withExtension: nil)?.path
+    }
+
+    private var configuredSource: String {
+        guard let content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return "" }
+        for line in content.components(separatedBy: .newlines) {
+            let value = line.trimmingCharacters(in: .whitespaces)
+            if value.contains("://") || value.contains("ffmpeg:") {
+                return value
+                    .replacingOccurrences(of: "- ", with: "")
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            }
+        }
+        return ""
+    }
+
+    private func existingToken(for accountID: String) -> String? {
+        guard let content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return nil }
+        let marker = "\"\(accountID)\":"
+        for line in content.components(separatedBy: .newlines) where line.contains(marker) {
+            guard let range = line.range(of: marker) else { continue }
+            let value = line[range.upperBound...].trimmingCharacters(in: .whitespaces)
+            return value.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        }
+        return nil
+    }
+
+    private func yamlValue(_ value: String) -> String {
+        value.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private func saveCameraConfig(source: String, token: String, streamName: String) throws {
+        var xiaomiConfig = ""
+        var xiaomiAccountID: String?
+        if source.hasPrefix("xiaomi://") {
+            guard let components = URLComponents(string: source),
+                  let accountID = components.user,
+                  !accountID.isEmpty,
+                  components.password?.isEmpty == false,
+                  !token.isEmpty else {
+                throw NSError(domain: "CamBar", code: 1, userInfo: [NSLocalizedDescriptionKey: "A Xiaomi source needs its account ID, region, and token."])
+            }
+            xiaomiAccountID = accountID
+            xiaomiConfig = "xiaomi:\n  \"\(yamlValue(accountID))\": \"\(yamlValue(token))\"\n\n"
+        }
+
+        let sourceValue: String
+        if source.hasPrefix("xiaomi://") {
+            sourceValue = "ffmpeg:cambar_source#video=h264#audio=aac"
+        } else {
+            sourceValue = source
+        }
+
+        let rawSource = source.hasPrefix("xiaomi://")
+            ? "  cambar_source:\n    - \"\(yamlValue(source))\"\n"
+            : ""
+        let config = """
+        \(xiaomiConfig)streams:
+        \(rawSource)  "\(yamlValue(streamName))":
+            - "\(yamlValue(sourceValue))"
+        """
+        try config.write(toFile: configPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configPath)
+        if let xiaomiAccountID {
+            CredentialStore.save(token: token, accountID: xiaomiAccountID)
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -271,12 +382,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showSetupWindow() {
         if setupWindow == nil {
-            let controller = SetupWindowController(initialStreamName: streamName ?? defaultStreamName)
+            let controller = SetupWindowController(initialStreamName: streamName ?? defaultStreamName,
+                                                    initialSource: configuredSource)
             controller.onInstall = { [weak self, weak controller] in
                 self?.installAndStart(controller: controller)
             }
             controller.onOpenGuide = { [weak self] in self?.openCameraSetup() }
-            controller.onSave = { [weak self] name in self?.saveStream(name) }
+            controller.onSave = { [weak self] name, source, token in
+                self?.saveStream(name, source: source, token: token, controller: controller)
+            }
             setupWindow = controller
         }
         setupWindow?.show()
@@ -300,7 +414,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func startBackgroundService(controller: SetupWindowController?) {
+    private func startBackgroundService(controller: SetupWindowController?, onReady: (() -> Void)? = nil) {
         do {
             let directory = (configPath as NSString).deletingLastPathComponent
             try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
@@ -322,6 +436,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller?.setInstalling(false)
             if success {
                 controller?.markReady()
+                onReady?()
             } else {
                 controller?.setStatus(output.isEmpty ? "Could not start the go2rtc service." : output, isError: true)
             }
@@ -364,16 +479,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(URL(string: "http://127.0.0.1:1984")!)
     }
 
-    private func saveStream(_ name: String) {
-        streamName = name
-        setupWindow?.markSaved(streamName: name)
-        buildPopover()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            guard let self else { return }
-            self.setupWindow?.close()
-            self.setupWindow = nil
-            self.showPopover()
+    private func saveStream(_ name: String,
+                            source: String,
+                            token: String,
+                            controller: SetupWindowController) {
+        do {
+            let resolvedToken: String
+            if source.hasPrefix("xiaomi://"), let accountID = URLComponents(string: source)?.user {
+                resolvedToken = token.isEmpty ? (existingToken(for: accountID) ?? "") : token
+            } else {
+                resolvedToken = token
+            }
+            try saveCameraConfig(source: source, token: resolvedToken, streamName: name)
+        } catch {
+            controller.setStatus(error.localizedDescription, isError: true)
+            return
         }
+
+        controller.setStatus("Configuration saved. Testing the camera stream…")
+        startBackgroundService(controller: controller) { [weak self, weak controller] in
+            self?.verifyStream { success, detail in
+                guard let self, let controller else { return }
+                if success {
+                    self.streamName = name
+                    controller.markSaved(streamName: name)
+                    self.buildPopover()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        controller.close()
+                        self.setupWindow = nil
+                        self.showPopover()
+                    }
+                } else {
+                    controller.setStatus("Configuration saved, but the stream test failed: \(detail)", isError: true)
+                }
+            }
+        }
+    }
+
+    private func verifyStream(attempt: Int = 0, completion: @escaping (Bool, String) -> Void) {
+        guard let streamURL else {
+            completion(false, "No stream is configured.")
+            return
+        }
+        URLSession.shared.dataTask(with: streamURL) { [weak self] data, response, error in
+            let isValid = (response as? HTTPURLResponse)?.statusCode == 200
+                && (data?.count ?? 0) > 20
+                && String(data: data ?? Data(), encoding: .utf8).map {
+                    $0.contains("#EXTM3U") && ($0.contains("#EXTINF") || $0.contains("#EXT-X-STREAM-INF"))
+                } == true
+            if isValid {
+                DispatchQueue.main.async { completion(true, "") }
+                return
+            }
+
+            if attempt < 7 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    self?.verifyStream(attempt: attempt + 1, completion: completion)
+                }
+            } else {
+                let detail = error?.localizedDescription ?? "go2rtc did not return a playable HLS playlist. Check the camera credentials and source URL."
+                DispatchQueue.main.async { completion(false, detail) }
+            }
+        }.resume()
     }
 
     private func showPopover() {
