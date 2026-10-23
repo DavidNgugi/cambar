@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build CamBar.app
+        run: |
+          chmod +x build-app.sh scripts/*.sh
+          ./build-app.sh
+
+      - name: Create DMG
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          hdiutil create -volname "CamBar ${VERSION}" \
+            -srcfolder "CamBar.app" -ov -format UDZO \
+            "CamBar-${VERSION}.dmg"
+          ls -lh CamBar-*.dmg
+
+      - name: Publish release with notes
+        uses: softprops/action-gh-release@v2
+        with:
+          files: CamBar-*.dmg
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

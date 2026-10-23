@@ -16,9 +16,28 @@ never expose RTSP/ONVIF locally — by bridging them through
 No browser tabs, no Dock icon, no Mi Home app. Click the camera icon, watch the
 feed, click again to hide it.
 
+## Download
+
+Grab the latest **`CamBar-<version>.dmg`** from
+[Releases](../../releases), open it, drag **CamBar** to Applications, then add it
+to **System Settings → General → Login Items**. (You still need go2rtc running —
+see [Full setup](#full-setup).)
+
+Releases are built and packaged by GitHub Actions on every `v*` tag.
+
 ---
 
-## Why
+## Why I built this
+
+I wanted my home camera **one click away** on my MacBook — not buried in a phone
+app or a browser tab. Something that sits in the menu bar, always running, and
+shows the feed the moment I click it. That's the whole idea: a camera that is
+always one gesture away, without a browser or a phone in the way.
+
+The camera happened to be a cloud-only Xiaomi unit with no local RTSP, so the
+project also ships the go2rtc bridge that makes it playable at all.
+
+## Why a bridge is needed
 
 Most budget cameras (Xiaomi C200/C300, IMILAB, many Tuya devices) only speak their
 vendor's cloud/P2P protocol. There is no local RTSP URL, no web UI, no ONVIF —
