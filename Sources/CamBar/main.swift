@@ -358,6 +358,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             let configuration = WKWebViewConfiguration()
             configuration.allowsAirPlayForMediaPlayback = false
             configuration.mediaTypesRequiringUserActionForPlayback = []
+            let hideControls = """
+            (() => {
+                const hide = () => {
+                    const video = document.querySelector('video');
+                    if (!video) return;
+                    video.controls = false;
+                    video.removeAttribute('controls');
+                    video.setAttribute('disablePictureInPicture', 'true');
+                };
+                hide();
+                new MutationObserver(hide).observe(document.documentElement, { childList: true, subtree: true });
+            })();
+            """
+            configuration.userContentController.addUserScript(
+                WKUserScript(source: hideControls, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+            )
             let view = WKWebView(frame: NSRect(x: 0, y: footer, width: width, height: height - footer), configuration: configuration)
             view.autoresizingMask = [.width, .height]
             view.navigationDelegate = self
