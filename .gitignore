@@ -6,3 +6,4 @@ go2rtc.yaml
 *.local.yaml
 dmg/
 *.dmg
+.vscode
