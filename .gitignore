@@ -1,0 +1,4 @@
+.build/
+CamBar.app/
+.DS_Store
+*.xcodeproj
