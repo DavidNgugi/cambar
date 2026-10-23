@@ -77,8 +77,8 @@ flowchart LR
 ## Quick start
 
 ~~~bash
-git clone https://github.com/YOURNAME/cam-bar.git
-cd cam-bar
+git clone https://github.com/DavidNgugi/cambar.git
+cd cambar
 ./scripts/install-go2rtc.sh      # downloads go2rtc into ~/.local/bin
 go2rtc                           # then open http://127.0.0.1:1984 and add your camera
 ./build-app.sh
