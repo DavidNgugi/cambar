@@ -1,6 +1,6 @@
 import Cocoa
-import AVKit
 import Security
+import WebKit
 
 private let defaultStreamName = "c200h264"
 private let defaultGo2RTCPath = "~/.local/bin/go2rtc"
@@ -177,12 +177,10 @@ final class SetupWindowController: NSObject {
 }
 
 /// Menu-bar app that shows a camera HLS stream in a popover.
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
-    private var player: AVPlayer?
-    private var playerItemObservation: NSKeyValueObservation?
-    private var playerFailureObserver: NSObjectProtocol?
+    private var webView: WKWebView?
     private weak var streamMessageLabel: NSTextField?
     private var setupWindow: SetupWindowController?
 
@@ -191,9 +189,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         set { UserDefaults.standard.set(newValue, forKey: "streamName") }
     }
 
-    private var streamURL: URL? {
+    private var webRTCURL: URL? {
         guard let streamName, !streamName.isEmpty else { return nil }
-        return URL(string: "http://127.0.0.1:1984/api/stream.m3u8?src=\(streamName)")
+        var components = URLComponents(string: "http://127.0.0.1:1984/webrtc.html")
+        components?.queryItems = [URLQueryItem(name: "src", value: streamName)]
+        return components?.url
     }
 
     private var go2rtcPath: String {
@@ -289,36 +289,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         buildPopover()
         DispatchQueue.main.async {
-            if self.streamURL == nil {
+            if self.streamName == nil || self.streamName?.isEmpty == true {
                 self.showSetupWindow()
             }
         }
     }
 
     private func buildPopover() {
-        playerItemObservation?.invalidate()
-        playerItemObservation = nil
-        if let playerFailureObserver {
-            NotificationCenter.default.removeObserver(playerFailureObserver)
-            self.playerFailureObserver = nil
-        }
+        webView?.stopLoading()
+        webView = nil
 
         let width: CGFloat = 720
         let height: CGFloat = 440
         let footer: CGFloat = 48
         let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
 
-        if let streamURL {
-            let playerView = AVPlayerView(frame: NSRect(x: 0, y: footer, width: width, height: height - footer))
-            playerView.autoresizingMask = [.width, .height]
-            playerView.controlsStyle = .none
-            playerView.videoGravity = .resizeAspect
-            let item = AVPlayerItem(url: streamURL)
-            let p = AVPlayer(playerItem: item)
-            p.isMuted = true
-            playerView.player = p
-            player = p
-            container.addSubview(playerView)
+        if let webRTCURL {
+            let configuration = WKWebViewConfiguration()
+            configuration.allowsAirPlayForMediaPlayback = false
+            configuration.mediaTypesRequiringUserActionForPlayback = []
+            let view = WKWebView(frame: NSRect(x: 0, y: footer, width: width, height: height - footer), configuration: configuration)
+            view.autoresizingMask = [.width, .height]
+            view.navigationDelegate = self
+            view.setValue(false, forKey: "drawsBackground")
+            view.load(URLRequest(url: webRTCURL))
+            webView = view
+            container.addSubview(view)
 
             let message = NSTextField(wrappingLabelWithString: "")
             message.alignment = .center
@@ -330,21 +326,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             container.addSubview(message)
             streamMessageLabel = message
 
-            playerItemObservation = item.observe(\AVPlayerItem.status, options: [.initial, .new]) { [weak self] item, _ in
-                guard item.status == .failed else { return }
-                let detail = item.error?.localizedDescription ?? "The stream could not be opened."
-                DispatchQueue.main.async {
-                    self?.showStreamError("Stream unavailable\n\n\(detail)\n\nOpen Setup to check go2rtc and FFmpeg.")
-                }
-            }
-            playerFailureObserver = NotificationCenter.default.addObserver(
-                forName: .AVPlayerItemNewErrorLogEntry,
-                object: item,
-                queue: .main
-            ) { [weak self] _ in
-                guard item.status == .failed else { return }
-                self?.showStreamError("Stream unavailable\n\nOpen Setup to check go2rtc and FFmpeg.")
-            }
         } else {
             let placeholder = NSTextField(wrappingLabelWithString: "CamBar needs a camera stream before it can show video.\n\nOpen setup to install go2rtc and connect your camera.")
             placeholder.alignment = .center
@@ -378,6 +359,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showStreamError(_ message: String) {
         streamMessageLabel?.stringValue = message
         streamMessageLabel?.isHidden = false
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: Error) {
+        showStreamError("WebRTC stream unavailable\n\n\(error.localizedDescription)\n\nOpen Setup to check go2rtc and the camera source.")
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation?, withError error: Error) {
+        showStreamError("WebRTC stream unavailable\n\n\(error.localizedDescription)\n\nOpen Setup to check go2rtc and the camera source.")
     }
 
     @objc private func showSetupWindow() {
@@ -517,11 +506,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func verifyStream(attempt: Int = 0, completion: @escaping (Bool, String) -> Void) {
-        guard let streamURL else {
+        guard let streamName, !streamName.isEmpty else {
             completion(false, "No stream is configured.")
             return
         }
-        URLSession.shared.dataTask(with: streamURL) { [weak self] data, response, error in
+        var components = URLComponents(string: "http://127.0.0.1:1984/api/stream.m3u8")
+        components?.queryItems = [URLQueryItem(name: "src", value: streamName)]
+        guard let hlsURL = components?.url else {
+            completion(false, "Could not create the local stream URL.")
+            return
+        }
+        URLSession.shared.dataTask(with: hlsURL) { [weak self] data, response, error in
             let isValid = (response as? HTTPURLResponse)?.statusCode == 200
                 && (data?.count ?? 0) > 20
                 && String(data: data ?? Data(), encoding: .utf8).map {
@@ -545,7 +540,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showPopover() {
         guard let button = statusItem.button else { return }
-        player?.play()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -554,9 +548,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard statusItem.button != nil else { return }
         if popover.isShown {
             popover.performClose(nil)
-            player?.pause()
         } else {
-            if streamURL == nil {
+            if webRTCURL == nil {
                 showSetupWindow()
                 return
             }
