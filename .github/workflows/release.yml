@@ -19,6 +19,9 @@ jobs:
           chmod +x build-app.sh scripts/*.sh
           ./build-app.sh
 
+      - name: Ad-hoc sign
+        run: codesign --force --deep --sign - CamBar.app
+
       - name: Create DMG
         run: |
           VERSION="${GITHUB_REF_NAME#v}"

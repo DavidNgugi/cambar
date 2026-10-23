@@ -18,4 +18,5 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>LSMinimumSystemVersion</key><string>13.0</string>
 </dict></plist>
 PLIST
+codesign --force --deep --sign - "$APP" >/dev/null 2>&1 && echo "Ad-hoc signed $APP" || true
 echo "Built $APP — run: open $APP"

@@ -25,6 +25,12 @@ see [Full setup](#full-setup).)
 
 Releases are built and packaged by GitHub Actions on every `v*` tag.
 
+> **First launch (Gatekeeper).** CamBar is **ad-hoc signed**, not notarized. If
+> macOS blocks it, right-click **CamBar** → **Open**, or run:
+> ```bash
+> xattr -dr com.apple.quarantine /Applications/CamBar.app
+> ```
+
 ---
 
 ## Why I built this
