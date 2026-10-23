@@ -161,6 +161,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return ProcessInfo.processInfo.environment["CAMBAR_GO2RTC_CONFIG"] ?? path
     }
 
+    private var bundledFFmpegPath: String? {
+        Bundle.main.url(forResource: "ffmpeg", withExtension: nil)?.path
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
@@ -312,7 +316,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         runBundledScript(named: "install-launchd", environment: [
             "GO2RTC": go2rtcPath,
-            "CONFIG": configPath
+            "CONFIG": configPath,
+            "FFMPEG": bundledFFmpegPath ?? ""
         ]) { [weak controller] success, output in
             controller?.setInstalling(false)
             if success {
