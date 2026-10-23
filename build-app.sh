@@ -37,7 +37,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
+  codesign --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$APP/Contents/MacOS/CamBar"
   codesign --force --deep --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$APP"
+  codesign --display --verbose=4 "$APP/Contents/MacOS/CamBar" 2>&1 | grep -E '^(Executable|Identifier|Format|CodeDirectory|TeamIdentifier|Authority|Timestamp)='
   codesign --verify --deep --strict "$APP"
   echo "Signed $APP with ${CODESIGN_IDENTITY}"
 else
