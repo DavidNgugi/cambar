@@ -2,3 +2,5 @@
 CamBar.app/
 .DS_Store
 *.xcodeproj
+go2rtc.yaml
+*.local.yaml

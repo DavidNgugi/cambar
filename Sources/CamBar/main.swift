@@ -27,39 +27,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.sendAction(on: [.leftMouseUp])
         }
 
-        let playerView = AVPlayerView()
+        let width: CGFloat = 720
+        let height: CGFloat = 440
+        let footer: CGFloat = 40
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+
+        let playerView = AVPlayerView(frame: NSRect(x: 0, y: footer, width: width, height: height - footer))
+        playerView.autoresizingMask = [.width, .height]
         playerView.controlsStyle = .none
         playerView.videoGravity = .resizeAspect
-        playerView.translatesAutoresizingMaskIntoConstraints = false
-
         let p = AVPlayer(url: streamURL)
         p.isMuted = true
         playerView.player = p
         player = p
+        container.addSubview(playerView)
 
         let quit = NSButton(title: "Quit", target: self, action: #selector(quit))
         quit.bezelStyle = .inline
-        quit.translatesAutoresizingMaskIntoConstraints = false
-
-        let container = NSView()
-        container.addSubview(playerView)
+        quit.frame = NSRect(x: (width - 80) / 2, y: 8, width: 80, height: 24)
+        quit.autoresizingMask = [.minXMargin, .maxXMargin, .maxYMargin]
         container.addSubview(quit)
-        NSLayoutConstraint.activate([
-            playerView.topAnchor.constraint(equalTo: container.topAnchor),
-            playerView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            playerView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            playerView.bottomAnchor.constraint(equalTo: quit.topAnchor, constant: -4),
-            quit.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            quit.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6)
-        ])
 
         let vc = NSViewController()
         vc.view = container
+        vc.preferredContentSize = NSSize(width: width, height: height)
 
         popover = NSPopover()
         popover.contentViewController = vc
         popover.behavior = .transient
-        popover.contentSize = NSSize(width: 720, height: 440)
+        popover.contentSize = NSSize(width: width, height: height)
     }
 
     @objc private func togglePopover() {

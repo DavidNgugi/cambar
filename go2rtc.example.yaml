@@ -1,0 +1,12 @@
+# Copy to ~/.config/go2rtc/go2rtc.yaml and fill in your values.
+# The token is created by go2rtc's Xiaomi login UI (http://127.0.0.1:1984).
+xiaomi:
+  "YOUR_ACCOUNT_ID": V1:YOUR_TOKEN
+
+streams:
+  # raw camera stream (HEVC on many models)
+  c200:
+    - xiaomi://YOUR_ACCOUNT_ID:REGION@CAMERA_IP?did=DEVICE_ID&model=MODEL
+  # H.264/AAC for browsers, AVPlayer and the TV
+  c200h264:
+    - ffmpeg:c200#video=h264#audio=aac
