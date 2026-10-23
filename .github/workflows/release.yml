@@ -15,18 +15,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build CamBar.app
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
           chmod +x build-app.sh scripts/*.sh
           ./build-app.sh
 
-      - name: Ad-hoc sign
-        run: codesign --force --deep --sign - CamBar.app
-
       - name: Create DMG
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          rm -rf dmg && mkdir -p dmg
+          cp -R CamBar.app dmg/
+          ln -s /Applications dmg/Applications
+          printf '%s\n' \
+            'CamBar is a menu-bar app.' \
+            '' \
+            '1. Drag CamBar to Applications.' \
+            '2. First launch: right-click CamBar -> Open (or run: xattr -dr com.apple.quarantine /Applications/CamBar.app).' \
+            '3. Look for the camera icon in the menu bar (top-right of the screen).' \
+            > dmg/README.txt
           hdiutil create -volname "CamBar ${VERSION}" \
-            -srcfolder "CamBar.app" -ov -format UDZO \
+            -srcfolder "dmg" -ov -format UDZO \
             "CamBar-${VERSION}.dmg"
           ls -lh CamBar-*.dmg
 

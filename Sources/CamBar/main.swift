@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var player: AVPlayer?
+    private var firstRunWindow: NSWindow?
 
     private lazy var streamURL: URL = {
         let fallback = "http://127.0.0.1:1984/api/stream.m3u8?src=c200h264"
@@ -57,6 +58,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController = vc
         popover.behavior = .transient
         popover.contentSize = NSSize(width: width, height: height)
+
+        showFirstRunIfNeeded()
+    }
+
+    /// Double-clicking a menu-bar-only app appears to "do nothing". The first
+    /// launch explains where the app actually lives.
+    private func showFirstRunIfNeeded() {
+        let key = "hasLaunched"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 190),
+                              styleMask: [.titled, .closable],
+                              backing: .buffered,
+                              defer: false)
+        window.title = "CamBar"
+        window.isReleasedWhenClosed = false
+
+        let text = NSTextField(wrappingLabelWithString: "CamBar is running in your menu bar — look for the camera icon at the top-right of your screen.\n\nClick it to view your camera; click it again to hide the feed.")
+        text.frame = NSRect(x: 24, y: 66, width: 412, height: 96)
+        text.font = NSFont.systemFont(ofSize: 14)
+        text.isSelectable = false
+
+        let gotIt = NSButton(title: "Got it", target: self, action: #selector(closeFirstRun))
+        gotIt.frame = NSRect(x: 180, y: 18, width: 100, height: 30)
+        gotIt.keyEquivalent = "\r"
+        gotIt.bezelStyle = .rounded
+
+        window.contentView?.addSubview(text)
+        window.contentView?.addSubview(gotIt)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        firstRunWindow = window
+    }
+
+    @objc private func closeFirstRun() {
+        firstRunWindow?.close()
+        firstRunWindow = nil
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 
     @objc private func togglePopover() {
