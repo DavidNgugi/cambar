@@ -20,6 +20,8 @@
   <a href="CONTRIBUTING.md"><b>Contributing</b></a>
 </p>
 
+<img src="docs/cambar-icon.svg" alt="CamBar app icon" width="128">
+<br>
 <img src="docs/menubar.svg" alt="CamBar" width="760">
 
 </div>
