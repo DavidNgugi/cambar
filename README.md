@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>CamBar</h1>
+<h1><img src="docs/cambar-icon.svg" alt="" width="52" height="52" valign="middle"> CamBar</h1>
 
 <p><b>Your camera, one click away in the macOS menu bar.</b></p>
 
@@ -20,8 +20,6 @@
   <a href="CONTRIBUTING.md"><b>Contributing</b></a>
 </p>
 
-<img src="docs/cambar-icon.svg" alt="CamBar app icon" width="128">
-<br>
 <img src="docs/menubar.svg" alt="CamBar" width="760">
 
 </div>
