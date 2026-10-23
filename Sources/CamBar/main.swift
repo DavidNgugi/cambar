@@ -117,6 +117,18 @@ final class SetupWindowController: NSObject {
         saveButton.isEnabled = true
         setStatus("go2rtc is running. Open its setup page to add your camera.")
     }
+
+    func markSaved(streamName: String) {
+        saveButton.title = "Saved ✓"
+        saveButton.isEnabled = false
+        guideButton.isEnabled = false
+        streamField.isEnabled = false
+        setStatus("Saved \(streamName). Opening CamBar…")
+    }
+
+    func close() {
+        window.close()
+    }
 }
 
 /// Menu-bar app that shows a camera HLS stream in a popover.
@@ -124,6 +136,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var player: AVPlayer?
+    private var playerItemObservation: NSKeyValueObservation?
+    private var playerFailureObserver: NSObjectProtocol?
+    private weak var streamMessageLabel: NSTextField?
     private var setupWindow: SetupWindowController?
 
     private var streamName: String? {
@@ -166,6 +181,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func buildPopover() {
+        playerItemObservation?.invalidate()
+        playerItemObservation = nil
+        if let playerFailureObserver {
+            NotificationCenter.default.removeObserver(playerFailureObserver)
+            self.playerFailureObserver = nil
+        }
+
         let width: CGFloat = 720
         let height: CGFloat = 440
         let footer: CGFloat = 48
@@ -176,11 +198,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             playerView.autoresizingMask = [.width, .height]
             playerView.controlsStyle = .none
             playerView.videoGravity = .resizeAspect
-            let p = AVPlayer(url: streamURL)
+            let item = AVPlayerItem(url: streamURL)
+            let p = AVPlayer(playerItem: item)
             p.isMuted = true
             playerView.player = p
             player = p
             container.addSubview(playerView)
+
+            let message = NSTextField(wrappingLabelWithString: "")
+            message.alignment = .center
+            message.font = .systemFont(ofSize: 14)
+            message.textColor = .secondaryLabelColor
+            message.frame = NSRect(x: 90, y: 172, width: width - 180, height: 96)
+            message.isHidden = true
+            message.autoresizingMask = [.width, .minYMargin, .maxYMargin]
+            container.addSubview(message)
+            streamMessageLabel = message
+
+            playerItemObservation = item.observe(\AVPlayerItem.status, options: [.initial, .new]) { [weak self] item, _ in
+                guard item.status == .failed else { return }
+                let detail = item.error?.localizedDescription ?? "The stream could not be opened."
+                DispatchQueue.main.async {
+                    self?.showStreamError("Stream unavailable\n\n\(detail)\n\nOpen Setup to check go2rtc and FFmpeg.")
+                }
+            }
+            playerFailureObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemNewErrorLogEntry,
+                object: item,
+                queue: .main
+            ) { [weak self] _ in
+                guard item.status == .failed else { return }
+                self?.showStreamError("Stream unavailable\n\nOpen Setup to check go2rtc and FFmpeg.")
+            }
         } else {
             let placeholder = NSTextField(wrappingLabelWithString: "CamBar needs a camera stream before it can show video.\n\nOpen setup to install go2rtc and connect your camera.")
             placeholder.alignment = .center
@@ -209,6 +258,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController = vc
         popover.behavior = .transient
         popover.contentSize = NSSize(width: width, height: height)
+    }
+
+    private func showStreamError(_ message: String) {
+        streamMessageLabel?.stringValue = message
+        streamMessageLabel?.isHidden = false
     }
 
     @objc private func showSetupWindow() {
@@ -307,13 +361,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func saveStream(_ name: String) {
         streamName = name
-        setupWindow = nil
+        setupWindow?.markSaved(streamName: name)
         buildPopover()
-        if popover.isShown { popover.performClose(nil) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self else { return }
+            self.setupWindow?.close()
+            self.setupWindow = nil
+            self.showPopover()
+        }
+    }
+
+    private func showPopover() {
+        guard let button = statusItem.button else { return }
+        player?.play()
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func togglePopover() {
-        guard let button = statusItem.button else { return }
+        guard statusItem.button != nil else { return }
         if popover.isShown {
             popover.performClose(nil)
             player?.pause()
@@ -322,9 +388,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 showSetupWindow()
                 return
             }
-            player?.play()
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
+            showPopover()
         }
     }
 
