@@ -36,10 +36,18 @@ cat > "$PLIST" <<EOF
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
   <key>StandardOutPath</key><string>/tmp/go2rtc.log</string>
   <key>StandardErrorPath</key><string>/tmp/go2rtc.err</string>
 </dict></plist>
 EOF
-launchctl unload "$PLIST" 2>/dev/null || true
-launchctl load "$PLIST"
-echo "Loaded $PLIST"
+
+# Use the per-user launchd domain explicitly. The older load/unload commands
+# can report success while leaving a stale service registration behind on
+# recent macOS releases.
+DOMAIN="gui/$(id -u)"
+SERVICE="${DOMAIN}/local.cambar.go2rtc"
+launchctl bootout "$SERVICE" 2>/dev/null || true
+launchctl bootstrap "$DOMAIN" "$PLIST"
+launchctl kickstart -k "$SERVICE"
+echo "Loaded $PLIST (KeepAlive enabled)"

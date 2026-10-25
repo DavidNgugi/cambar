@@ -75,6 +75,24 @@ final class SetupWindowController: NSObject {
         setStatus(installing ? "Installing and starting the background service…" : "")
     }
 
+    func setSaving(_ saving: Bool) {
+        saveButton.isEnabled = !saving
+        installButton.isEnabled = !saving
+        guideButton.isEnabled = !saving
+        streamField.isEnabled = !saving
+        sourceField.isEnabled = !saving
+        tokenField.isEnabled = !saving
+        launchAtLoginButton.isEnabled = !saving
+        saveButton.title = saving ? "Saving…" : "Save & Open CamBar"
+        if saving {
+            setStatus("Saving your camera settings and checking the stream…")
+        }
+    }
+
+    func resetSaveState() {
+        setSaving(false)
+    }
+
     private func makeContentView() -> NSView {
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 560, height: 520))
 
@@ -167,6 +185,7 @@ final class SetupWindowController: NSObject {
             setStatus("Paste the camera source URL from go2rtc.", isError: true)
             return
         }
+        setSaving(true)
         onSave?(name, source, token)
     }
 
@@ -179,8 +198,11 @@ final class SetupWindowController: NSObject {
     func markSaved(streamName: String) {
         saveButton.title = "Saved ✓"
         saveButton.isEnabled = false
+        installButton.isEnabled = false
         guideButton.isEnabled = false
         streamField.isEnabled = false
+        sourceField.isEnabled = false
+        tokenField.isEnabled = false
         launchAtLoginButton.isEnabled = false
         setStatus("Saved \(streamName). Opening CamBar…")
     }
@@ -197,6 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     private var webView: WKWebView?
     private weak var streamMessageLabel: NSTextField?
     private var setupWindow: SetupWindowController?
+    private var serviceRecoveryInFlight = false
 
     private var streamName: String? {
         get { UserDefaults.standard.string(forKey: "streamName") }
@@ -311,10 +334,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
         buildPopover()
         DispatchQueue.main.async {
+            self.recoverBackgroundServiceIfNeeded()
             if self.streamName == nil || self.streamName?.isEmpty == true {
                 self.showSetupWindow()
             }
         }
+    }
+
+    private func recoverBackgroundServiceIfNeeded() {
+        guard FileManager.default.fileExists(atPath: go2rtcPath),
+              FileManager.default.fileExists(atPath: configPath) else { return }
+
+        // Reinstalling the LaunchAgent is idempotent and repairs the common case
+        // where launchd unloaded it after an update, logout, or crash.
+        startBackgroundService(controller: nil)
     }
 
     private func registerLaunchAtLogin() {
@@ -429,10 +462,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: Error) {
         showStreamError("WebRTC stream unavailable\n\n\(error.localizedDescription)\n\nOpen Setup to check go2rtc and the camera source.")
+        restartServiceForPlayback()
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation?, withError error: Error) {
         showStreamError("WebRTC stream unavailable\n\n\(error.localizedDescription)\n\nOpen Setup to check go2rtc and the camera source.")
+        restartServiceForPlayback()
     }
 
     @objc private func showSetupWindow() {
@@ -473,7 +508,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         }
     }
 
-    private func startBackgroundService(controller: SetupWindowController?, onReady: (() -> Void)? = nil) {
+    private func startBackgroundService(controller: SetupWindowController?,
+                                        onReady: (() -> Void)? = nil,
+                                        onFailure: ((String) -> Void)? = nil) {
         do {
             let directory = (configPath as NSString).deletingLastPathComponent
             try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
@@ -483,7 +520,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             }
         } catch {
             controller?.setInstalling(false)
-            controller?.setStatus("Could not create the go2rtc config: \(error.localizedDescription)", isError: true)
+            controller?.resetSaveState()
+            let message = "Could not create the go2rtc config: \(error.localizedDescription)"
+            controller?.setStatus(message, isError: true)
+            onFailure?(message)
             return
         }
 
@@ -497,9 +537,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                 controller?.markReady()
                 onReady?()
             } else {
-                controller?.setStatus(output.isEmpty ? "Could not start the go2rtc service." : output, isError: true)
+                controller?.resetSaveState()
+                let message = output.isEmpty ? "Could not start the go2rtc service." : output
+                controller?.setStatus(message, isError: true)
+                onFailure?(message)
             }
         }
+    }
+
+    private func restartServiceForPlayback() {
+        guard !serviceRecoveryInFlight,
+              FileManager.default.fileExists(atPath: go2rtcPath),
+              FileManager.default.fileExists(atPath: configPath) else { return }
+
+        serviceRecoveryInFlight = true
+        let wasShown = popover?.isShown == true
+        startBackgroundService(controller: nil, onReady: { [weak self] in
+            guard let self else { return }
+            self.serviceRecoveryInFlight = false
+            if wasShown { self.popover.performClose(nil) }
+            self.buildPopover()
+            if wasShown { self.showPopover() }
+        }, onFailure: { [weak self] message in
+            self?.serviceRecoveryInFlight = false
+            self?.showStreamError("go2rtc could not be restarted.\n\n\(message)")
+        })
     }
 
     private func runBundledScript(named name: String,
@@ -551,13 +613,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             }
             try saveCameraConfig(source: source, token: resolvedToken, streamName: name)
         } catch {
+            controller.resetSaveState()
             controller.setStatus(error.localizedDescription, isError: true)
             return
         }
 
         controller.setStatus("Configuration saved. Testing the camera stream…")
         startBackgroundService(controller: controller) { [weak self, weak controller] in
-            self?.verifyStream { success, detail in
+            self?.verifyStream(named: name) { success, detail in
                 guard let self, let controller else { return }
                 if success {
                     self.streamName = name
@@ -569,14 +632,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                         self.showPopover()
                     }
                 } else {
+                    controller.resetSaveState()
                     controller.setStatus("Configuration saved, but the stream test failed: \(detail)", isError: true)
                 }
             }
         }
     }
 
-    private func verifyStream(attempt: Int = 0, completion: @escaping (Bool, String) -> Void) {
-        guard let streamName, !streamName.isEmpty else {
+    private func verifyStream(named streamName: String,
+                              attempt: Int = 0,
+                              completion: @escaping (Bool, String) -> Void) {
+        guard !streamName.isEmpty else {
             completion(false, "No stream is configured.")
             return
         }
@@ -599,7 +665,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
             if attempt < 7 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                    self?.verifyStream(attempt: attempt + 1, completion: completion)
+                    self?.verifyStream(named: streamName, attempt: attempt + 1, completion: completion)
                 }
             } else {
                 let detail = error?.localizedDescription ?? "go2rtc did not return a playable HLS playlist. Check the camera credentials and source URL."
@@ -624,6 +690,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                 return
             }
             showPopover()
+            restartServiceForPlayback()
         }
     }
 
